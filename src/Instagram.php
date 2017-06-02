@@ -30,6 +30,11 @@ class Instagram
      * The OAuth token URL.
      */
     const API_OAUTH_TOKEN_URL = 'https://api.instagram.com/oauth/access_token';
+    
+    /**
+     * The URL used to subscribe to update
+     */
+    const API_SUBSCRIBE_URL = 'https://api.instagram.com/v1/subscriptions/';
 
     /**
      * The Instagram API Key.
@@ -960,6 +965,22 @@ class Instagram
      */
     public function setProxyPort($port){
         $this->_proxyPort = $port;
+    }
+    
+    public function subscribeToUpdates($callbackUrl, $verifyToken) {
+      
+      $params = array(
+          'client_id' => $this->getApiKey(),
+          'client_secret' => $this->getApiSecret(),
+          'object' => 'user',
+          'aspect' => 'media',
+          'verify_token' => $verifyToken,
+          'callback_url' => $callbackUrl
+      );
+      
+      $paramString = '&' . http_build_query($params);
+      
+      return $this->_performCurlAndProcessResponse(self::API_SUBSCRIBE_URL, $params, $paramString, 'POST');
     }
 }
 
