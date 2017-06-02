@@ -517,22 +517,8 @@ class Instagram
             if (!isset($obj->pagination->next_url)) {
                 return;
             }
-
-            $apiCall = explode('?', $obj->pagination->next_url);
-
-            if (count($apiCall) < 2) {
-                return;
-            }
-
-            $function = str_replace(self::API_URL, '', $apiCall[0]);
-
-            $auth = (strpos($apiCall[1], 'access_token') !== false);
-
-            if (isset($obj->pagination->next_max_id)) {
-                return $this->_makeCall($function, $auth, array('max_id' => $obj->pagination->next_max_id, 'count' => $limit));
-            }
-
-            return $this->_makeCall($function, $auth, array('cursor' => $obj->pagination->next_cursor, 'count' => $limit));
+            
+            return $this->_performCurlAndProcessResponse($obj->pagination->next_url);
         }
 
         throw new InstagramException("Error: pagination() | This method doesn't support pagination.");
@@ -595,50 +581,55 @@ class Instagram
 
         $apiCall = self::API_URL . $function . $authMethod . (('GET' === $method) ? $paramString : null);
 
-        // we want JSON
-        $headerData = array('Accept: application/json');
-
         if ($this->_signedheader) {
             $apiCall .= (strstr($apiCall, '?') ? '&' : '?') . 'sig=' . $this->_signHeader($function, $authMethod, $params);
         }
+        
+        return $this->_performCurlAndProcessResponse($apiCall, $params, $paramString, $method);
+        
+    }
+    
+    private function _performCurlAndProcessResponse($url, $params = null, $paramString = null, $method = 'GET') {
+      // we want JSON
+      $headerData = array('Accept: application/json');
+      
+      $ch = curl_init();
+      curl_setopt($ch, CURLOPT_URL, $url);
+      curl_setopt($ch, CURLOPT_HTTPHEADER, $headerData);
+      curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 20);
+      curl_setopt($ch, CURLOPT_TIMEOUT, 90);
+      curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+      curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+      curl_setopt($ch, CURLOPT_HEADER, true);
 
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $apiCall);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headerData);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 20);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 90);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_HEADER, true);
+      switch ($method) {
+          case 'POST':
+              curl_setopt($ch, CURLOPT_POST, count($params));
+              curl_setopt($ch, CURLOPT_POSTFIELDS, ltrim($paramString, '&'));
+              break;
+          case 'DELETE':
+              curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
+              break;
+      }
 
-        switch ($method) {
-            case 'POST':
-                curl_setopt($ch, CURLOPT_POST, count($params));
-                curl_setopt($ch, CURLOPT_POSTFIELDS, ltrim($paramString, '&'));
-                break;
-            case 'DELETE':
-                curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
-                break;
-        }
+      $jsonData = curl_exec($ch);
+      // split header from JSON data
+      // and assign each to a variable
+      list($headerContent, $jsonData) = explode("\r\n\r\n", $jsonData, 2);
 
-        $jsonData = curl_exec($ch);
-        // split header from JSON data
-        // and assign each to a variable
-        list($headerContent, $jsonData) = explode("\r\n\r\n", $jsonData, 2);
+      // convert header content into an array
+      $headers = $this->processHeaders($headerContent);
 
-        // convert header content into an array
-        $headers = $this->processHeaders($headerContent);
+      // get the 'X-Ratelimit-Remaining' header value
+      $this->_xRateLimitRemaining = $headers['X-Ratelimit-Remaining'];
 
-        // get the 'X-Ratelimit-Remaining' header value
-        $this->_xRateLimitRemaining = $headers['X-Ratelimit-Remaining'];
+      if (!$jsonData) {
+          throw new InstagramException('Error: _performCurlAndProcessResponse() - cURL error: ' . curl_error($ch));
+      }
 
-        if (!$jsonData) {
-            throw new InstagramException('Error: _makeCall() - cURL error: ' . curl_error($ch));
-        }
+      curl_close($ch);
 
-        curl_close($ch);
-
-        return json_decode($jsonData);
+      return json_decode($jsonData);
     }
 
     /**
