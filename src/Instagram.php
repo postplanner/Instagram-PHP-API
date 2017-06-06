@@ -967,6 +967,9 @@ class Instagram
         $this->_proxyPort = $port;
     }
     
+    /**
+     * Subscribes to updates from Instagram 
+     */
     public function subscribeToUpdates($callbackUrl, $verifyToken) {
       
       $params = array(
@@ -981,6 +984,18 @@ class Instagram
       $paramString = '&' . http_build_query($params);
       
       return $this->_performCurlAndProcessResponse(self::API_SUBSCRIBE_URL, $params, $paramString, 'POST');
+    }
+    
+    /**
+     * Returns true iff the meta data indicates the user for the given user_id
+     * cannot be accessed with the set access_token.
+     */
+    public function profileIsPrivate($user_id) {
+      $userResponse = $this->getUser($user_id);
+      return $userResponse && 
+        $userResponse->meta && 
+        $userResponse->meta->code == 400 && 
+        $userResponse->meta->error_type == 'APINotAllowedError';
     }
 }
 
